@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
-export default function LoginScreen({ onGoRegister, onGoForgot }) {
+export default function LoginScreen({ onGoRegister }) {
   const { signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -12,20 +12,18 @@ export default function LoginScreen({ onGoRegister, onGoForgot }) {
     e.preventDefault()
     setError('')
 
-    if (!email.trim() || !password) {
+    if (!username.trim() || !password) {
       setError('Preencha todos os campos.')
       return
     }
 
     setLoading(true)
     try {
-      await signIn(email.trim().toLowerCase(), password)
+      await signIn(username.trim(), password)
     } catch (err) {
       const msg = err.message || ''
       if (msg.includes('Invalid login')) {
-        setError('Email ou senha incorretos.')
-      } else if (msg.includes('Email not confirmed')) {
-        setError('Email ainda não verificado. Verifique sua caixa de entrada.')
+        setError('Usuário ou senha incorretos.')
       } else {
         setError('Erro ao fazer login. Tente novamente.')
       }
@@ -52,14 +50,15 @@ export default function LoginScreen({ onGoRegister, onGoForgot }) {
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="auth-field">
-            <label>Email</label>
+            <label>Usuário</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-              autoComplete="email"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9._-]/g, ''))}
+              placeholder="seu.usuario"
+              autoComplete="username"
               autoCapitalize="none"
+              autoCorrect="off"
             />
           </div>
 
@@ -73,14 +72,6 @@ export default function LoginScreen({ onGoRegister, onGoForgot }) {
               autoComplete="current-password"
             />
           </div>
-
-          <button
-            type="button"
-            className="auth-forgot-link"
-            onClick={onGoForgot}
-          >
-            Esqueceu a senha?
-          </button>
 
           <button
             type="submit"

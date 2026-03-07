@@ -3,6 +3,8 @@ import { supabase } from '../config/supabase'
 
 const AuthContext = createContext(null)
 
+const FAKE_DOMAIN = '@plafin.local'
+
 export function useAuth() {
   return useContext(AuthContext)
 }
@@ -24,38 +26,41 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const signUp = useCallback(async (email, password) => {
+  const getUsername = useCallback(() => {
+    if (!user) return ''
+    return user.user_metadata?.username || user.email?.replace(FAKE_DOMAIN, '') || ''
+  }, [user])
+
+  const signUp = useCallback(async (username, password) => {
+    const email = `${username.toLowerCase().trim()}${FAKE_DOMAIN}`
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { app: 'plafin' } }
+      options: {
+        data: { username: username.toLowerCase().trim() },
+        emailRedirectTo: undefined,
+      }
     })
-    if (error) throw error
+
+    if (error) {
+      if (error.message?.includes('already registered')) {
+        throw new Error('USERNAME_TAKEN')
+      }
+      throw error
+    }
+
+    if (data?.user?.identities?.length === 0) {
+      throw new Error('USERNAME_TAKEN')
+    }
+
     return data
   }, [])
 
-  const verifyOtp = useCallback(async (email, token) => {
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'signup'
-    })
-    if (error) throw error
-    return data
-  }, [])
-
-  const signIn = useCallback(async (email, password) => {
+  const signIn = useCallback(async (username, password) => {
+    const email = `${username.toLowerCase().trim()}${FAKE_DOMAIN}`
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
-    })
-    if (error) throw error
-    return data
-  }, [])
-
-  const resetPassword = useCallback(async (email) => {
-    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}`
     })
     if (error) throw error
     return data
@@ -69,10 +74,9 @@ export function AuthProvider({ children }) {
   const value = {
     user,
     loading,
+    getUsername,
     signUp,
-    verifyOtp,
     signIn,
-    resetPassword,
     signOut,
   }
 

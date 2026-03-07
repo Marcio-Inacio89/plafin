@@ -4,7 +4,6 @@ import { FinanceProvider } from './context/FinanceContext'
 import LandingPage from './screens/LandingPage'
 import LoginScreen from './screens/LoginScreen'
 import RegisterScreen from './screens/RegisterScreen'
-import ForgotPasswordScreen from './screens/ForgotPasswordScreen'
 import HomeScreen from './screens/HomeScreen'
 import ProjecaoScreen from './screens/ProjecaoScreen'
 import GraficoScreen from './screens/GraficoScreen'
@@ -24,7 +23,7 @@ function isStandalone() {
 }
 
 function MainApp() {
-  const { signOut } = useAuth()
+  const { signOut, getUsername } = useAuth()
   const [activeTab, setActiveTab] = useState('home')
   const [showModal, setShowModal] = useState(false)
   const [editData, setEditData] = useState(null)
@@ -64,11 +63,14 @@ function MainApp() {
             <span /><span /><span />
           </button>
           <h1>{titles[activeTab]}</h1>
-          <button className="header-logout" onClick={signOut} title="Sair">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M7 17H4a1 1 0 01-1-1V4a1 1 0 011-1h3M13 14l4-4-4-4M17 10H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          <div className="header-user-area">
+            <span className="header-username">{getUsername()}</span>
+            <button className="header-logout" onClick={signOut} title="Sair">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M7 17H4a1 1 0 01-1-1V4a1 1 0 011-1h3M13 14l4-4-4-4M17 10H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </header>
 
         <main className="app-content">
@@ -162,14 +164,9 @@ function AuthGate() {
     return <RegisterScreen onGoLogin={() => setAuthScreen('login')} />
   }
 
-  if (authScreen === 'forgot') {
-    return <ForgotPasswordScreen onGoLogin={() => setAuthScreen('login')} />
-  }
-
   return (
     <LoginScreen
       onGoRegister={() => setAuthScreen('register')}
-      onGoForgot={() => setAuthScreen('forgot')}
     />
   )
 }

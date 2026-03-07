@@ -1,22 +1,44 @@
 import React, { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 
+function generateSuggestions(base) {
+  const year = new Date().getFullYear()
+  const rand = Math.floor(Math.random() * 99) + 1
+  return [
+    `${base}${rand}`,
+    `${base}_${year}`,
+    `${base}.${Math.floor(Math.random() * 999) + 1}`,
+  ]
+}
+
 export default function RegisterScreen({ onGoLogin }) {
-  const { signUp, verifyOtp } = useAuth()
-  const [step, setStep] = useState('form') // 'form' | 'verify'
-  const [email, setEmail] = useState('')
+  const { signUp } = useAuth()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
 
   const handleRegister = async (e) => {
     e.preventDefault()
     setError('')
+    setSuggestions([])
 
-    if (!email.trim() || !password || !confirmPassword) {
+    const user = username.trim().toLowerCase()
+
+    if (!user || !password || !confirmPassword) {
       setError('Preencha todos os campos.')
+      return
+    }
+
+    if (user.length < 3) {
+      setError('O usuário deve ter no mínimo 3 caracteres.')
+      return
+    }
+
+    if (!/^[a-zA-Z0-9._-]+$/.test(user)) {
+      setError('Use apenas letras, números, ponto, traço ou underline.')
       return
     }
 
@@ -32,16 +54,11 @@ export default function RegisterScreen({ onGoLogin }) {
 
     setLoading(true)
     try {
-      const data = await signUp(email.trim().toLowerCase(), password)
-      if (data.user && !data.user.email_confirmed_at) {
-        setStep('verify')
-      }
+      await signUp(user, password)
     } catch (err) {
-      const msg = err.message || ''
-      if (msg.includes('already registered')) {
-        setError('Este email já está cadastrado.')
-      } else if (msg.includes('valid email')) {
-        setError('Informe um email válido.')
+      if (err.message === 'USERNAME_TAKEN') {
+        setError('Este usuário já está em uso. Escolha uma das sugestões abaixo ou tente outro.')
+        setSuggestions(generateSuggestions(user))
       } else {
         setError('Erro ao cadastrar. Tente novamente.')
       }
@@ -50,83 +67,19 @@ export default function RegisterScreen({ onGoLogin }) {
     }
   }
 
-  const handleVerify = async (e) => {
-    e.preventDefault()
+  const pickSuggestion = (s) => {
+    setUsername(s)
+    setSuggestions([])
     setError('')
-
-    if (!code.trim() || code.trim().length < 6) {
-      setError('Informe o código de 6 dígitos enviado por email.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      await verifyOtp(email.trim().toLowerCase(), code.trim())
-    } catch (err) {
-      const msg = err.message || ''
-      if (msg.includes('expired') || msg.includes('invalid')) {
-        setError('Código inválido ou expirado. Verifique e tente novamente.')
-      } else {
-        setError('Erro na verificação. Tente novamente.')
-      }
-    } finally {
-      setLoading(false)
-    }
   }
 
-  if (step === 'verify') {
-    return (
-      <div className="auth-page">
-        <div className="auth-container">
-          <div className="auth-logo">
-            <div className="auth-verify-icon">✉️</div>
-          </div>
-
-          <h2 className="auth-title">Verificar email</h2>
-          <p className="auth-subtitle">
-            Enviamos um código de 6 dígitos para<br />
-            <strong>{email}</strong>
-          </p>
-
-          {error && <div className="auth-error">{error}</div>}
-
-          <form className="auth-form" onSubmit={handleVerify}>
-            <div className="auth-field">
-              <label>Código de verificação</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="000000"
-                className="auth-code-input"
-                autoComplete="one-time-code"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="auth-btn-primary"
-              disabled={loading}
-            >
-              {loading ? 'Verificando...' : 'Confirmar'}
-            </button>
-          </form>
-
-          <p className="auth-hint">
-            Não recebeu? Verifique a pasta de spam.
-          </p>
-
-          <button
-            className="auth-back-link"
-            onClick={() => { setStep('form'); setError('') }}
-          >
-            ← Voltar
-          </button>
-        </div>
-      </div>
-    )
+  const handleUsernameChange = (e) => {
+    const val = e.target.value.replace(/[^a-zA-Z0-9._-]/g, '').substring(0, 30)
+    setUsername(val)
+    if (suggestions.length) {
+      setSuggestions([])
+      setError('')
+    }
   }
 
   return (
@@ -145,17 +98,34 @@ export default function RegisterScreen({ onGoLogin }) {
 
         {error && <div className="auth-error">{error}</div>}
 
+        {suggestions.length > 0 && (
+          <div className="username-suggestions">
+            {suggestions.map(s => (
+              <button
+                key={s}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => pickSuggestion(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         <form className="auth-form" onSubmit={handleRegister}>
           <div className="auth-field">
-            <label>Email</label>
+            <label>Usuário</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="seu@email.com"
-              autoComplete="email"
+              type="text"
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="escolha.seu.usuario"
+              autoComplete="username"
               autoCapitalize="none"
+              autoCorrect="off"
             />
+            <span className="auth-field-hint">Letras, números, ponto, traço ou underline</span>
           </div>
 
           <div className="auth-field">
