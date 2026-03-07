@@ -6,3 +6,6 @@ dist
 *.png
 test-*.js
 public/test-pdf.html
+.env
+.env.*
+.vercel
