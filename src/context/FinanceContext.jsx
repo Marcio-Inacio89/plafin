@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, useState } from 'react'
+import { supabase } from '../config/supabase'
 
 const FinanceContext = createContext()
-const STORAGE_KEY = 'plafin_data_v2'
 
 const DEFAULT_CONTAS = [
   { id: 'carteira', nome: 'Carteira', cor: '#007AFF', icone: '👛' }
@@ -9,23 +9,10 @@ const DEFAULT_CONTAS = [
 
 const initialState = { contas: DEFAULT_CONTAS, transacoes: [] }
 
-function loadState() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      if (!parsed.contas?.length) parsed.contas = DEFAULT_CONTAS
-      if (!parsed.transacoes) parsed.transacoes = []
-      return parsed
-    }
-    return initialState
-  } catch {
-    return initialState
-  }
-}
-
 function reducer(state, action) {
   switch (action.type) {
+    case 'LOAD_STATE':
+      return action.payload
     case 'ADD_CONTA':
       return { ...state, contas: [...state.contas, action.payload] }
     case 'REMOVE_CONTA': {
@@ -94,12 +81,103 @@ const PERIODICIDADE_MULT = {
   anual: 1 / 12,
 }
 
+async function fetchCloudData(userId) {
+  const { data, error } = await supabase
+    .from('user_data')
+    .select('contas, transacoes')
+    .eq('user_id', userId)
+    .single()
+
+  if (error && error.code === 'PGRST116') return null
+  if (error) throw error
+  return data
+}
+
+async function saveCloudData(userId, state) {
+  const { error } = await supabase
+    .from('user_data')
+    .upsert({
+      user_id: userId,
+      contas: state.contas,
+      transacoes: state.transacoes,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' })
+
+  if (error) console.error('[Plafin] Erro ao salvar na nuvem:', error.message)
+}
+
 export function FinanceProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, null, loadState)
+  const [state, dispatch] = useReducer(reducer, initialState)
+  const [cloudReady, setCloudReady] = useState(false)
+  const [syncing, setSyncing] = useState(true)
+  const saveTimer = useRef(null)
+  const skipNextSave = useRef(false)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+    let cancelled = false
+
+    async function loadData() {
+      setSyncing(true)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user || cancelled) {
+          setSyncing(false)
+          return
+        }
+
+        const cloud = await fetchCloudData(session.user.id)
+
+        if (cancelled) return
+
+        if (cloud) {
+          const loaded = {
+            contas: cloud.contas?.length ? cloud.contas : DEFAULT_CONTAS,
+            transacoes: cloud.transacoes || []
+          }
+          skipNextSave.current = true
+          dispatch({ type: 'LOAD_STATE', payload: loaded })
+        } else {
+          await saveCloudData(session.user.id, initialState)
+        }
+      } catch (err) {
+        console.error('[Plafin] Erro ao carregar dados:', err.message)
+      } finally {
+        if (!cancelled) {
+          setCloudReady(true)
+          setSyncing(false)
+        }
+      }
+    }
+
+    loadData()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!cloudReady) return
+
+    if (skipNextSave.current) {
+      skipNextSave.current = false
+      return
+    }
+
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          await saveCloudData(session.user.id, state)
+        }
+      } catch (err) {
+        console.error('[Plafin] Erro ao sincronizar:', err.message)
+      }
+    }, 800)
+
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [state, cloudReady])
 
   const isFixedActiveInMonth = useCallback((t, mes, ano) => {
     const idx = ano * 12 + mes
@@ -197,7 +275,7 @@ export function FinanceProvider({ children }) {
   }, [state.contas])
 
   return (
-    <FinanceContext.Provider value={{ state, dispatch, getTransacoesMes, getTotaisMes, getProjecao, getConta }}>
+    <FinanceContext.Provider value={{ state, dispatch, getTransacoesMes, getTotaisMes, getProjecao, getConta, syncing }}>
       {children}
     </FinanceContext.Provider>
   )
